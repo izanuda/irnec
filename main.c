@@ -9,20 +9,20 @@
 //----------------------------------------------------------------------
 // IR receiver definitions
 //----------------------------------------------------------------------
-#define MINBIT          10
-#define MAXBIT          30
+#define MINBIT			10
+#define MAXBIT			30
 // Timeout for preamble, (9+4.5)ms
-#define MINPREAMBLE1    100
-#define MAXPREAMBLE1    110
-#define MINPREAMBLE2    50
-#define MAXPREAMBLE2    55
+#define MINPREAMBLE1	100
+#define MAXPREAMBLE1	110
+#define MINPREAMBLE2	50
+#define MAXPREAMBLE2	55
 // 110 ms repeat
-#define MAXREPEAT       1300
+#define MAXREPEAT		1300
 
-#define	IR_MAX		    5	// maximum number of IR data bytes
+#define	IR_MAX			5	// maximum number of IR data bytes
 
-#define	LED		        (D,5)	// I/O port for LED
-#define	SENSOR	        (D,6)	// I/O port for IR sensor
+#define	LED				(D,5)	// I/O port for LED
+#define	SENSOR			(D,6)	// I/O port for IR sensor
 
 //----------------------------------------------------------------------
 // decoder states
@@ -49,14 +49,14 @@ enum
 
 typedef union
 {
-    struct			// IgorPlug-USB compatible data layout
-    {
-    	byte_t length;		 	// length of data[]
+	struct			// IgorPlug-USB compatible data layout
+	{
+		byte_t length;			// length of data[]
 		byte_t count;			// incremented for each IR packet
 		byte_t offset;			// not used
 		byte_t data[IR_MAX];	// decoded data
-    };
-    byte_t raw[IR_MAX + 3];
+	};
+	byte_t raw[IR_MAX + 3];
 } IrPacket;
 
 //typedef union
@@ -75,7 +75,6 @@ IrPacket ir = {.length = 0, .count = 0, .offset = 0, .data = {0xFC, 0, 0, 0, 0}}
 byte_t bitCnt;
 byte_t currByte;
 
-//uint_t prev;
 //volatile Flags flags;
 volatile byte_t waitRepeat;
 volatile NecState state;
@@ -140,13 +139,13 @@ ISR(TIMER1_CAPT_vect)
 				bitCnt = 0;
 				cli();
 			}
-			SET(LED);               // switch LED on
-			BIT_SET(TIFR, OCF1B);   // clear Output Compare Interrupt 1B
+			SET(LED);	// switch LED on
+			BIT_SET(TIFR, OCF1B);	// clear Output Compare Interrupt 1B
 			OCR1B = MAXREPEAT;
 			OCR1AL = MAXBIT;
 			break;
 
-		default:    // data bits
+		default:	// data bits
 			if(stamp < MINBIT)
 			{
 				state = S_IDLE;
@@ -170,18 +169,17 @@ ISR(TIMER1_CAPT_vect)
 					}
 					else
 					{
-						++ir.count;     // пакет закончен
+						++ir.count;		// пакет закончен
 						waitRepeat = 1;
 						state = S_IDLE;
 					}
 				}
 //				OCR1AL = MAXBIT;
 			}
-
 	}
 
-	if(state < S_ADDRESS_0)         // counting only NEC edges
-		TCCR1B ^= _BV(ICES1);		// toggle edge detector
+	if(state < S_ADDRESS_0)		// counting only NEC edges
+		TCCR1B ^= _BV(ICES1);	// toggle edge detector
 	TCNT1 = 0;
 	TIMSK = ir.length? _BV(ICIE1) | _BV(OCIE1A) | _BV(OCIE1B) : _BV(ICIE1) | _BV(OCIE1A);
 }
@@ -194,11 +192,11 @@ ISR(TIMER1_COMPA_vect)
 	state = S_IDLE;
 	ENABLE_TCCR1();		// reset to negative edge
 
-	if(waitRepeat) 	//
+	if(waitRepeat)	//
 		TIMSK = _BV(ICIE1) | _BV(OCIE1B);
 	else
 		TIMSK = _BV(ICIE1);
-	CLR(LED);				// switch LED off
+	CLR(LED);			// switch LED off
 }
 
 // ----------------------------------------------------------------------
@@ -206,9 +204,10 @@ ISR(TIMER1_COMPA_vect)
 // ----------------------------------------------------------------------
 ISR(TIMER1_COMPB_vect)
 {
-    waitRepeat = 0;
-    TIMSK = _BV(ICIE1);
+	waitRepeat = 0;
+	TIMSK = _BV(ICIE1);
 }
+
 // ----------------------------------------------------------------------
 // Handle a non-standard SETUP packet.
 // ----------------------------------------------------------------------
@@ -217,15 +216,15 @@ extern byte_t usb_setup(byte_t data[8])
 	byte_t r = 0;
 	switch(data[1])
 	{
-    // IgorPlug-USB requests
-        case IGORPLUG_CLEAR:
+	// IgorPlug-USB requests
+		case IGORPLUG_CLEAR:
 			//cli();
 			//ir.length = 0;
 			//flags.waitRepeat = 0;
 			//sei();
-            break;
+			break;
 
-        case IGORPLUG_READ:
+		case IGORPLUG_READ:
 			cli();
 			if(ir.length == IR_MAX)
 			{
@@ -265,9 +264,9 @@ extern byte_t usb_in(byte_t* data, byte_t len)
 // ----------------------------------------------------------------------
 extern int main(void)
 {
-    // Initialize the IR receiver.
+	// Initialize the IR receiver.
 	OUTPUT(LED);
-	SET(SENSOR);    //pullup
+	SET(SENSOR);	//pullup
 
 	//state = S_IDLE;
 	//flags.raw = 0;
