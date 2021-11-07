@@ -1,10 +1,10 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
+#include <stdbool.h>
 
-#include <def.h>
-#include <usb.h>
-
+#include "def.h"
+#include "usb.h"
 
 //----------------------------------------------------------------------
 // IR receiver definitions
@@ -23,6 +23,8 @@
 
 #define	LED				(D,5)	// I/O port for LED
 #define	SENSOR			(D,6)	// I/O port for IR sensor
+
+#define	NEC_ID_BYTE		0xFC
 
 //----------------------------------------------------------------------
 // decoder states
@@ -60,12 +62,12 @@ typedef union
 } IrPacket;
 
 //----------------------------------------------------------------------
-static IrPacket ir;// = {.length = 0, .count = 0, .offset = 0, .data = {0xFC, 0, 0, 0, 0}};
+static IrPacket ir;// = {.length = 0, .count = 0, .offset = 0, .data = {NEC_ID_BYTE, 0, 0, 0, 0}};
 static byte_t bitCnt;
 static byte_t currByte;
 
 //volatile Flags flags;
-volatile byte_t waitRepeat;
+volatile bool waitRepeat;
 volatile NecState state;
 volatile byte_t inpos = 0xff;	// read position for usb_in(), or 0xff
 
@@ -105,7 +107,6 @@ ISR(TIMER1_CAPT_vect)
 			if(stamp < MINPREAMBLE2)
 			{
 				state = S_IDLE;
-				cli();
 				if(waitRepeat && (stamp >= (MINPREAMBLE2 / 2)))
 				{
 					//repeat
@@ -124,10 +125,9 @@ ISR(TIMER1_CAPT_vect)
 				state = S_ADDRESS_0;
 				currByte = 0;
 				bitCnt = 0;
-				cli();
 				ir.length = 1;
 			}
-			sei();
+
 			SET(LED);	// switch LED on
 			BIT_SET(TIFR, OCF1B);	// clear Output Compare Interrupt 1B
 			OCR1B = MAXREPEAT;
@@ -158,9 +158,7 @@ ISR(TIMER1_CAPT_vect)
 					}
 					else
 					{
-						cli();
 						++ir.count;		// пакет закончен
-						sei();
 						waitRepeat = 1;
 						state = S_IDLE;
 					}
@@ -180,14 +178,15 @@ ISR(TIMER1_CAPT_vect)
 // ----------------------------------------------------------------------
 ISR(TIMER1_COMPA_vect)
 {
+	TIMSK = 0;
+	sei();
+
 	state = S_IDLE;
 	ENABLE_TCCR1();		// reset to negative edge
-
-	if(waitRepeat)
-		TIMSK = _BV(ICIE1) | _BV(OCIE1B);
-	else
-		TIMSK = _BV(ICIE1);
 	CLR(LED);			// switch LED off
+
+	cli();
+	TIMSK = waitRepeat? _BV(ICIE1) | _BV(OCIE1B) : _BV(ICIE1);
 }
 
 // ----------------------------------------------------------------------
@@ -238,11 +237,8 @@ extern byte_t usb_in(byte_t* data, byte_t len)
 {
 	byte_t n = 0;
 	while(n < len && inpos < (IR_MAX + 3))
-	{
-		cli();
 		data[n++] = ir.raw[inpos++];
-		sei();
-	}
+
 	inpos = 0xff;	// reenable receiver
 	return n;
 }
@@ -256,10 +252,10 @@ extern int main(void)
 	OUTPUT(LED);
 	SET(SENSOR);	//pullup
 
-	ir.data[0] = 0xFC;
+	ir.data[0] = NEC_ID_BYTE;
 
 	ENABLE_TCCR1();
-	TIMSK  = _BV(ICIE1);	// input capture 1 interrupt enable
+	TIMSK = _BV(ICIE1);	// input capture 1 interrupt enable
 
 	usb_init();
 	for(;;)
