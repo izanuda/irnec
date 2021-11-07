@@ -47,7 +47,7 @@
 #define	USBTINY_DEVICE_ID		0x0002	// IgorPlug-USB
 
 // The version of the device as a 16-bit number: 256*major + minor.
-#define	USBTINY_DEVICE_VERSION		0x105
+#define	USBTINY_DEVICE_VERSION		0x106
 
 // The following optional macros may be used as an identification of
 // your device. Undefine them when you run out of flash space.
