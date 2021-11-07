@@ -59,21 +59,10 @@ typedef union
 	byte_t raw[IR_MAX + 3];
 } IrPacket;
 
-//typedef union
-//{
-//	struct
-//	{
-//		byte_t usbRead		: 1;
-//		byte_t waitRepeat	: 1;
-//		byte_t dummy		: 6;
-//	};
-//	byte_t raw;
-//} Flags;
-
 //----------------------------------------------------------------------
-IrPacket ir = {.length = 0, .count = 0, .offset = 0, .data = {0xFC, 0, 0, 0, 0}};
-byte_t bitCnt;
-byte_t currByte;
+static IrPacket ir;// = {.length = 0, .count = 0, .offset = 0, .data = {0xFC, 0, 0, 0, 0}};
+static byte_t bitCnt;
+static byte_t currByte;
 
 //volatile Flags flags;
 volatile byte_t waitRepeat;
@@ -90,10 +79,9 @@ volatile byte_t inpos = 0xff;	// read position for usb_in(), or 0xff
 //----------------------------------------------------------------------
 ISR(TIMER1_CAPT_vect)
 {
-//	if(flags.usbRead)
-//		return;
-	uint8_t stamp = ICR1L;		// get time stamp
-	TIMSK = 0;
+	uint8_t stamp = ICR1L;	// get time stamp
+	TIMSK = 0;	// disable IR interrupts
+	sei();		// allow USB interrupt
 
 	switch(state)
 	{
@@ -117,6 +105,7 @@ ISR(TIMER1_CAPT_vect)
 			if(stamp < MINPREAMBLE2)
 			{
 				state = S_IDLE;
+				cli();
 				if(waitRepeat && (stamp >= (MINPREAMBLE2 / 2)))
 				{
 					//repeat
@@ -133,12 +122,12 @@ ISR(TIMER1_CAPT_vect)
 			{
 				// prepare for new packet
 				state = S_ADDRESS_0;
-				ir.length = 1;
-				sei();
 				currByte = 0;
 				bitCnt = 0;
 				cli();
+				ir.length = 1;
 			}
+			sei();
 			SET(LED);	// switch LED on
 			BIT_SET(TIFR, OCF1B);	// clear Output Compare Interrupt 1B
 			OCR1B = MAXREPEAT;
@@ -147,21 +136,21 @@ ISR(TIMER1_CAPT_vect)
 
 		default:	// data bits
 			if(stamp < MINBIT)
-			{
 				state = S_IDLE;
-			}
 			else
 			{
-				sei();
 				currByte <<= 1;
 				if(stamp > MAXBIT/2)
 					currByte |= 1;
 				++bitCnt;
-				cli();
 
 				if(bitCnt == 8)
 				{
-					ir.data[ir.length++] = currByte;
+					cli();
+					if(inpos == 0xFF)
+						ir.data[ir.length++] = currByte;
+					sei();
+
 					if(++state < S_LAST)
 					{
 						bitCnt = 0;
@@ -169,18 +158,20 @@ ISR(TIMER1_CAPT_vect)
 					}
 					else
 					{
+						cli();
 						++ir.count;		// пакет закончен
+						sei();
 						waitRepeat = 1;
 						state = S_IDLE;
 					}
 				}
-//				OCR1AL = MAXBIT;
 			}
 	}
 
 	if(state < S_ADDRESS_0)		// counting only NEC edges
 		TCCR1B ^= _BV(ICES1);	// toggle edge detector
 	TCNT1 = 0;
+	cli();
 	TIMSK = ir.length? _BV(ICIE1) | _BV(OCIE1A) | _BV(OCIE1B) : _BV(ICIE1) | _BV(OCIE1A);
 }
 
@@ -192,7 +183,7 @@ ISR(TIMER1_COMPA_vect)
 	state = S_IDLE;
 	ENABLE_TCCR1();		// reset to negative edge
 
-	if(waitRepeat)	//
+	if(waitRepeat)
 		TIMSK = _BV(ICIE1) | _BV(OCIE1B);
 	else
 		TIMSK = _BV(ICIE1);
@@ -218,10 +209,7 @@ extern byte_t usb_setup(byte_t data[8])
 	{
 	// IgorPlug-USB requests
 		case IGORPLUG_CLEAR:
-			//cli();
-			//ir.length = 0;
-			//flags.waitRepeat = 0;
-			//sei();
+			inpos = 0xff;
 			break;
 
 		case IGORPLUG_READ:
@@ -237,6 +225,7 @@ extern byte_t usb_setup(byte_t data[8])
 				r = 1;
 			}
 			sei();
+			break;
 	}
 
 	return r;
@@ -248,14 +237,13 @@ extern byte_t usb_setup(byte_t data[8])
 extern byte_t usb_in(byte_t* data, byte_t len)
 {
 	byte_t n = 0;
-//	flags.usbRead = 1;
 	while(n < len && inpos < (IR_MAX + 3))
 	{
 		cli();
 		data[n++] = ir.raw[inpos++];
 		sei();
 	}
-//	flags.usbRead = 0;	// reenable receiver
+	inpos = 0xff;	// reenable receiver
 	return n;
 }
 
@@ -268,10 +256,7 @@ extern int main(void)
 	OUTPUT(LED);
 	SET(SENSOR);	//pullup
 
-	//state = S_IDLE;
-	//flags.raw = 0;
-	//ir.length = 0;
-	//ir.data[0] = 0xFC;
+	ir.data[0] = 0xFC;
 
 	ENABLE_TCCR1();
 	TIMSK  = _BV(ICIE1);	// input capture 1 interrupt enable
